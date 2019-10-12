@@ -1,6 +1,4 @@
-// Copyright (c) 2003-2005 Maxim Sobolev. All rights reserved.
-// Copyright (c) 2006-2015 Sippy Software, Inc. All rights reserved.
-// Copyright (c) 2015 Andrii Pylypenko. All rights reserved.
+// Copyright (c) 2019 Sippy Software, Inc. All rights reserved.
 //
 // All rights reserved.
 //
@@ -27,27 +25,38 @@
 package sippy
 
 import (
-    "sippy/conf"
+    "sippy/sdp"
     "sippy/types"
 )
 
-type UaStateDead struct {
-    *uaStateGeneric
+type SdpSession struct {
+    last_origin *sippy_sdp.SdpOrigin
+    origin      *sippy_sdp.SdpOrigin
 }
 
-func NewUaStateDead(ua sippy_types.UA, config sippy_conf.Config) *UaStateDead {
-    return &UaStateDead {
-        uaStateGeneric  : newUaStateGeneric(ua, config),
+func NewSdpSession() *SdpSession {
+    return &SdpSession{
+        origin      : sippy_sdp.NewSdpOrigin(),
     }
 }
 
-func (self *UaStateDead) OnActivation() {
-    self.ua.OnDead()
-    // Break cross-ref chain
-    self.ua.Cleanup()
-    self.ua = nil
-}
-
-func (self *UaStateDead) String() string {
-    return "Dead"
+func (self *SdpSession) FixupVersion(event sippy_types.CCEvent) error {
+    sdp_body := event.GetBody()
+    if sdp_body == nil {
+        return nil // no SDP so there is nothing to do
+    }
+    sdp, err := sdp_body.GetSdp()
+    if err != nil {
+        return err
+    }
+    new_origin := sdp.GetOHeader().GetCopy()
+    if self.last_origin != nil {
+        if self.last_origin.GetSessionId() != new_origin.GetSessionId() ||
+                self.last_origin.GetVersion() != new_origin.GetVersion() {
+            self.origin.IncVersion()
+        }
+    }
+    self.last_origin = new_origin
+    sdp.SetOHeader(self.origin.GetCopy())
+    return nil
 }

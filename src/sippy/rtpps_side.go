@@ -31,7 +31,6 @@ import (
     "math"
     "strconv"
     "strings"
-    "sync"
     "sync/atomic"
 
     "sippy/net"
@@ -46,10 +45,7 @@ type _rtpps_side struct {
     laddress        string
     raddress        *sippy_net.HostPort
     codecs          string
-    origin          *sippy_sdp.SdpOrigin
     repacketize     int
-    origin_lock     sync.Mutex
-    oh_remote       *sippy_sdp.SdpOrigin
     after_sdp_change func(sippy_types.RtpProxyUpdateResult)
     from_tag        string
     to_tag          string
@@ -155,7 +151,7 @@ func (self *_rtpps_side) update_result(result, remote_ip, atype string, result_c
 }
 
 func (self *_rtpps_side) _on_sdp_change(sdp_body sippy_types.MsgBody, result_callback func(sippy_types.MsgBody)) error {
-    parsed_body, err := sdp_body.GetParsedBody()
+    parsed_body, err := sdp_body.GetSdp()
     if err != nil {
         return err
     }
@@ -190,7 +186,7 @@ func (self *_rtpps_side) _on_sdp_change(sdp_body sippy_types.MsgBody, result_cal
     return nil
 }
 
-func (self *_rtpps_side) _sdp_change_finish(cb_args *rtpproxy_update_result, sdp_body sippy_types.MsgBody, parsed_body sippy_types.ParsedMsgBody, sect *sippy_sdp.SdpMediaDescription, sections_left *int64, result_callback func(sippy_types.MsgBody)) {
+func (self *_rtpps_side) _sdp_change_finish(cb_args *rtpproxy_update_result, sdp_body sippy_types.MsgBody, parsed_body sippy_types.Sdp, sect *sippy_sdp.SdpMediaDescription, sections_left *int64, result_callback func(sippy_types.MsgBody)) {
     if cb_args != nil {
         if self.after_sdp_change != nil {
             self.after_sdp_change(cb_args)
@@ -214,26 +210,22 @@ func (self *_rtpps_side) _sdp_change_finish(cb_args *rtpproxy_update_result, sdp
         // more work is in progress
         return
     }
-    self.origin_lock.Lock()
-    if self.oh_remote != nil {
-        if parsed_body.GetOHeader() != nil {
-            if self.oh_remote.GetSessionId() != parsed_body.GetOHeader().GetSessionId() ||
-                    self.oh_remote.GetVersion() != parsed_body.GetOHeader().GetVersion() {
-                // Please be aware that this code is not RFC-4566 compliant in case when
-                // the session is reused for hunting through several call legs. In that
-                // scenario the outgoing SDP should be compared with the previously sent
-                // one.
-                self.origin.IncVersion()
-            }
-        }
-    }
-    self.oh_remote = parsed_body.GetOHeader().GetCopy()
-    parsed_body.SetOHeader(self.origin.GetCopy())
-    self.origin_lock.Unlock()
     if self.owner.insert_nortpp {
         parsed_body.AppendAHeader("nortpproxy=yes")
     }
     sdp_body.SetNeedsUpdate(false)
+    // RFC4566
+    // *******
+    // For privacy reasons, it is sometimes desirable to obfuscate the
+    // username and IP address of the session originator.  If this is a
+    // concern, an arbitrary <username> and private <unicast-address> MAY be
+    // chosen to populate the "o=" field, provided that these are selected
+    // in a manner that does not affect the global uniqueness of the field.
+    // *******
+    origin := parsed_body.GetOHeader()
+    origin.SetAddress("192.0.2.1")
+    origin.SetAddressType("IP4")
+    origin.SetNetworkType("IN")
     result_callback(sdp_body)
 }
 

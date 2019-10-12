@@ -123,14 +123,14 @@ type MsgBody interface {
     GetCopy() MsgBody
     NeedsUpdate() bool
     SetNeedsUpdate(bool)
-    GetParsedBody() (ParsedMsgBody, error)
+    GetSdp() (Sdp, error)
     AppendAHeader(string)
 }
 
-type ParsedMsgBody interface {
+type Sdp interface {
     String() string
     LocalStr(hostport *sippy_net.HostPort) string
-    GetCopy() ParsedMsgBody
+    GetCopy() Sdp
     SetCHeaderAddr(string)
     GetCHeader() *sippy_sdp.SdpConnecton
     GetSections() []*sippy_sdp.SdpMediaDescription
@@ -282,6 +282,8 @@ type UA interface {
     BeforeRequestSent(SipRequest)
     BeforeResponseSent(SipResponse)
     PrepTr(SipRequest) (ClientTransaction, error)
+    Cleanup()
+    OnEarlyUasDisconnect(CCEvent) (int, string)
 }
 
 type baseTransaction interface {
@@ -345,6 +347,7 @@ type UaState interface {
 }
 
 type CCEvent interface {
+    GetBody() MsgBody
     GetSeq() int64
     GetRtime() *sippy_time.MonoTime
     GetOrigin() string

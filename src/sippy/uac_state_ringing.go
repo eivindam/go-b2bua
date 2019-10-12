@@ -57,6 +57,10 @@ func (self *UacStateRinging) RecvResponse(resp sippy_types.SipResponse, tr sippy
         // the 100 Trying can be processed later than 180 Ringing
         self.ua.SetLastScode(code)
     }
+    if code > 100 && code < 300 {
+        // the route set must be ready for sending the PRACK
+        self.ua.UpdateRouting(resp, true, true)
+    }
     if code < 200 {
         if rseq := resp.GetRSeq(); rseq != nil {
             to_body, err := resp.GetTo().GetBody(self.config)
@@ -110,7 +114,6 @@ func (self *UacStateRinging) RecvResponse(resp sippy_types.SipResponse, tr sippy
         var newstate sippy_types.UaState
         var cb func()
 
-        self.ua.UpdateRouting(resp, true, true)
         to_body, err = resp.GetTo().GetBody(self.config)
         if err != nil {
             self.config.ErrorLogger().Error("UacStateRinging::RecvResponse: #1: " + err.Error())
